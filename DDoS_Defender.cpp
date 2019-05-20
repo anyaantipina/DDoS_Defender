@@ -177,7 +177,7 @@ void DDoS_Defender::init(Loader *loader, const Config &rootConfig){
             if (is_filled == true) {
                 check_attack_end();
             }
-            print_attack_end();
+            //print_attack_end();
         }
     });
     ctrl->registerHandler("MyHandler",[this](SwitchConnectionPtr conn) {
@@ -830,7 +830,7 @@ void DDoS_Defender::check_src_criterion(uint64_t sw_id){
             }
         }
     }
-    print_src_criterion();
+    //print_src_criterion();
 }
 
 void DDoS_Defender::check_attack_end(){
