@@ -67,7 +67,6 @@ private:
     std::unordered_map<std::string, host_info> RevIPBindTable;
     std::unordered_map<std::string, host_info> IPBindTable;
     std::unordered_map<uint64_t, ports> switches;
-    std::unordered_map<uint64_t, uint32_t> drop_ports;
     std::unordered_map<std::string, score> src_criterion;
     std::unordered_map<std::string, counters> attack_end;
     std::map<uint64_t, bool> sw_response;
@@ -82,10 +81,6 @@ private:
     void build_ports_set();
 
     void get_cpu_util();
-
-    void config_drop_ports_no();
-    void init_drop_ports();
-
 
     void timerEvent(QTimerEvent*) override;
 
@@ -114,7 +109,6 @@ public:
     void print_rev_ip_table();
     void print_hosts();
     void print_ports();
-    void print_drop_ports();
     void print_src_criterion();
     void print_attack_end();
     void init(Loader*, const Config&) override;

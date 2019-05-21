@@ -22,17 +22,10 @@ REGISTER_APPLICATION(DDoS_Defender, {"controller", "host-manager", ""})
 typedef of13::OXMTLV* ModifyElem;
 typedef std::vector<ModifyElem> ModifyList;
 
-//FOR SINGLE 3 TOPOLOGY
-/*int DDoS_Defender::crit_good_flows = 3;
-float DDoS_Defender::alpha = 0.4;
-float DDoS_Defender::threshold_low = 0.1;
-float DDoS_Defender::threshold_hight = 0.8;
-int DDoS_Defender::THRESHOLD = 20;*/
-
 //FOR TREE TOPOLOGY
 int DDoS_Defender::crit_good_flows = 3;
 float DDoS_Defender::alpha = 0.4;
-float DDoS_Defender::threshold_low = 0.1;
+float DDoS_Defender::threshold_low = 0.25;
 float DDoS_Defender::threshold_hight = 0.4;
 int DDoS_Defender::THRESHOLD = 20;
 double DDoS_Defender::cpu_util = 0.0;
@@ -130,9 +123,6 @@ void DDoS_Defender::init(Loader *loader, const Config &rootConfig){
         host_info host(dev->mac(), dev->ip(), dev->switchPort(), dev->switchID());
         hosts.push_back(host);
     });
-
-    //ADD DROP PORTS
-    QObject::connect(this, &DDoS_Defender::new_port, ctrl, &Controller::portStatus);
 
     //RESPONSE TO FLOW STATS REPLY
     oftran = ctrl->registerStaticTransaction(this);
@@ -340,11 +330,6 @@ void DDoS_Defender::send_init_flowmods(){
             fm1.flags( of13::OFPFF_CHECK_OVERLAP | of13::OFPFF_SEND_FLOW_REM );
             fm2.flags( of13::OFPFF_CHECK_OVERLAP | of13::OFPFF_SEND_FLOW_REM );
             fm1.match(make_of_match(m_match1)); fm2.match(make_of_match(m_match2));
-            of13::OutputAction* out = new of13::OutputAction(drop_ports[switch_->id()], 128);
-            of13::ApplyActions applyActions;
-            applyActions.add_action(out);
-            fm1.add_instruction(applyActions);
-            fm2.add_instruction(applyActions);
             switch_->connection()->send(fm1);
             switch_->connection()->send(fm2);
         }
@@ -430,30 +415,11 @@ void DDoS_Defender::send_drop_flowmod(uint64_t sw_id, uint32_t port_no){
     fm1.flags( of13::OFPFF_CHECK_OVERLAP | of13::OFPFF_SEND_FLOW_REM );
     fm2.flags( of13::OFPFF_CHECK_OVERLAP | of13::OFPFF_SEND_FLOW_REM );
     fm1.match(make_of_match(m_match1)); fm2.match(make_of_match(m_match2));
-    of13::OutputAction* out = new of13::OutputAction(drop_ports[sw_id], 128);
-    of13::ApplyActions applyActions;
-    applyActions.add_action(out);
-    fm1.add_instruction(applyActions);
-    fm2.add_instruction(applyActions);
     sw->connection()->send(fm1);
     sw->connection()->send(fm2);
 }
 
 //INIT FUNCTIONS
-
-void DDoS_Defender::init_drop_ports(){
-    for (auto it_switch : switches){
-        Switch* sw = sm->getSwitch(it_switch.first);
-        of13::PortStatus ps;
-        of13::Port port;
-        port.port_no(drop_ports[sw->id()]);
-        port.config(of13::OFPPC_NO_FWD || of13::OFPPC_NO_PACKET_IN);
-        ps.reason(of13::OFPPR_ADD);
-        ps.desc(port);
-        emit new_port(sw->connection(), ps);
-    }
-
-}
 
 void DDoS_Defender::init_src_criterion(){
     for (auto it : IPBindTable){
@@ -480,8 +446,6 @@ void DDoS_Defender::check_RevTable(){
         build_ports_set();
         print_ip_table();
         print_ports();
-        config_drop_ports_no();
-        init_drop_ports();
         init_src_criterion();
         //get_flow_stats();
         send_init_flowmods();
@@ -489,17 +453,6 @@ void DDoS_Defender::check_RevTable(){
     }
 }
 
-void DDoS_Defender::config_drop_ports_no(){
-    for (auto it_switch : switches) {
-        for (uint32_t nom = 1; nom != of13::OFPP_MAX; nom++) {
-            if ((it_switch.second.user.find(nom) == it_switch.second.user.end()) and
-                   (it_switch.second.trusted.find(nom) == it_switch.second.trusted.end()) ){
-                drop_ports.insert({it_switch.first, nom});
-                break;
-            }
-        }
-    }
-}
 
 //BUILDING FUNCTIONS
 void DDoS_Defender::build_IPBindTable(){
@@ -629,13 +582,6 @@ void DDoS_Defender::print_flow_stats(std::vector<of13::FlowStats> flow_stats){
                   << ", hard_to: " << it.hard_timeout()
                   << ", packet count: " << it.packet_count();
         index++;
-    }
-}
-
-void DDoS_Defender::print_drop_ports(){
-    LOG(INFO) << "Drop ports set (size = " << drop_ports.size() <<") :";
-    for (auto it_switch : drop_ports){
-        LOG(INFO) << "sw " << it_switch.first << " drop port " << it_switch.second;
     }
 }
 
