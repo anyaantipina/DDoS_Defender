@@ -1,0 +1,72 @@
+{
+
+"default": {
+    "services": [
+        "learning-switch",
+        "rest-listener",
+        "host-manager",
+        "webui",
+        "static-flow-pusher",
+        "switch-stats",
+        "stp",
+        "arp-handler",
+        "flow-manager",
+        "rest-multipart",
+        "rest-flowmod",
+	"DDoS_Defender"
+    ],
+
+    "DDoS_Defender" : {
+	"crit_good_flows" : 3,
+	"alpha" : "0.2",
+	"threshold_low" : "0.18",
+	"threshold_hight" : "0.9",
+	"threshold_cpu_util" : "30",
+	"THRESHOLD" : 100,
+	"interval" : 3,
+	"hosts_amount" : 8
+    },
+
+    "flow-manager" : {
+        "interval" : 5
+    },
+
+    "rest-listener" : {
+         "port" : 8000,
+         "web-dir" : "./build/web"
+    },
+
+    "controller": {
+	 "address": "192.168.56.101",
+	 "port": 6653,
+         "nthreads": 4,
+         "cbench": false,
+         "pipeline": [
+             "link-discovery",
+             "host-manager",
+             "arp-handler",
+             "forwarding",
+	     "MyHandler"
+         ]
+    },
+
+    "loader": {
+        "threads": 2
+    },
+
+    "link-discovery": {
+        "poll-interval": 10,
+        "pin-to-thread": 1
+    },
+
+    "switch-manager": {
+        "pin-to-thread": 1
+    },
+
+    "switch-stats": {
+	"poll-interval": 1,
+	"pin-to-thread": 1
+    }
+}
+
+}

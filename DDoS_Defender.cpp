@@ -31,6 +31,7 @@ int DDoS_Defender::THRESHOLD = 20;
 double DDoS_Defender::cpu_util = 0.0;
 int DDoS_Defender::interval = 3;
 double DDoS_Defender::threshold_cpu_util = 25;
+unsigned int DDoS_Defender::hosts_amount = 8;
 
 
 static clock_t lastCPU, lastSysCPU, lastUserCPU;
@@ -108,11 +109,13 @@ void DDoS_Defender::init(Loader *loader, const Config &rootConfig){
     threshold_hight = string_to_float(config_get(config, "threshold_hight", "0.4").c_str());
     THRESHOLD = config_get(config, "THRESHOLD",20);
     interval = config_get(config, "interval", 3);
+    hosts_amount = config_get(config, "hosts_amount", 8);
 
     //test_interval = false; //FOR TESTING
 
 
     BuildDone = false;
+    HostsDone = false;
     ATTACK = false;
     Controller *ctrl = Controller::get(loader);
     HostManager *hm = HostManager::get(loader);
@@ -198,6 +201,7 @@ void DDoS_Defender::init(Loader *loader, const Config &rootConfig){
 
             if (!BuildDone) { // BUILDING IP_BIND_TABLE
                 add_to_RevTable(str_mac, config_ip_src, port_no, sw_id);
+                check_RevTable();
             }
             else { // INCREASING SRC PACKET_IN COUNTER
                 std::string key = "MAC " + str_mac + " IP " + config_ip_src;
@@ -229,32 +233,50 @@ void DDoS_Defender::timerEvent(QTimerEvent*) {
         get_cpu_util();
         get_flow_stats();
     }
+    else if (HostsDone) {
+        build_IPBindTable();
+        print_ip_table();
+        build_ports_set();
+        print_ports();
+        init_src_criterion();
+        send_init_flowmods();
+        BuildDone = true;
+    }
+    else {
+        //print_hosts();
+        //print_rev_ip_table();
+    }
 }
 
 void DDoS_Defender::add_to_RevTable(std::string mac, std::string ip, uint32_t port_no, uint64_t sw_id){
-    std::string key = "switch_id " + std::to_string(sw_id) +
-            " port_no " + std::to_string(port_no);
+    std::string key = "MAC " + mac + " IP " + ip;
     auto find_key = RevIPBindTable.find(key);
     if (find_key == RevIPBindTable.end()){
         host_info host(mac, ip, port_no, sw_id);
         RevIPBindTable.insert({key,host});
-        check_RevTable();
-    }
-    else {
-        if ((find_key->second.ip == "0.0.0.0") and (ip != "0.0.0.0")) {
-        host_info host(mac, ip, port_no, sw_id);
-        RevIPBindTable[key] = host;
         int index = 0;
         for (auto it_hosts : hosts){
-            if ((it_hosts.ip == "0.0.0.0") and  (it_hosts.mac == mac)) {
+            if ((it_hosts.mac == mac) and (it_hosts.ip == "0.0.0.0")) {
                 hosts[index] = host;
                 break;
             }
             index++;
         }
-        check_RevTable();
+    }
+    else {
+        host_info host(mac, ip, find_key->second.switch_port, find_key->second.switch_id);
+        RevIPBindTable[key] = host;
+        int index = 0;
+        for (auto it_hosts : hosts){
+            if ((it_hosts.mac == mac) and (it_hosts.ip == "0.0.0.0")) {
+                hosts[index] = host;
+                break;
+            }
+            index++;
         }
     }
+
+    //print_rev_ip_table();
 }
 
 void DDoS_Defender::get_flow_stats(){
@@ -434,37 +456,44 @@ void DDoS_Defender::init_src_criterion(){
 //CHECKING FUNCTIONS
 
 void DDoS_Defender::check_RevTable(){
-    bool done = true;
-    if (hosts.size() == 0) done = false;
-    for (auto it : hosts){
-        if (it.ip == "0.0.0.0") {
-            done = false;
+    //print_hosts();
+    bool find_all_hosts = true;
+    unsigned int not_zero_ip = 0;
+    if (hosts.size() == 0) {
+        find_all_hosts = false;
+    }
+    for (auto it_hosts : hosts) {
+        bool find_host = false;
+        for (auto it_revtable : RevIPBindTable) {
+            if (it_hosts.mac == it_revtable.second.mac) {
+                find_host = true;
+                if (it_revtable.second.ip != "0.0.0.0"){
+                    not_zero_ip++;
+                    break;
+                }
+            }
+        }
+        if (!find_host) {
+            find_all_hosts = false;
+            break;
         }
     }
-    if (done) {
-        build_IPBindTable();
-        build_ports_set();
-        print_ip_table();
-        print_ports();
-        init_src_criterion();
-        //get_flow_stats();
-        send_init_flowmods();
-        BuildDone = true;
+    if (find_all_hosts and (not_zero_ip==hosts_amount)) {
+        HostsDone = true;
     }
 }
 
 
 //BUILDING FUNCTIONS
 void DDoS_Defender::build_IPBindTable(){
-    for (auto it_rev_table : RevIPBindTable) {
-        for (auto it_hosts : hosts){
-            if (it_hosts.ip == it_rev_table.second.ip) {
-                host_info host(it_hosts.mac, it_hosts.ip, it_hosts.switch_port, it_hosts.switch_id);
-                std::string key = "MAC " + it_hosts.mac + " IP " + it_hosts.ip;
+    for (auto it_hosts : hosts) {
+        for (auto it_rev_table : RevIPBindTable){
+            if (((it_hosts.ip == it_rev_table.second.ip) or (convert_ip_addr(it_hosts.ip) == it_rev_table.second.ip))
+                and (it_hosts.mac == it_rev_table.second.mac) and (it_hosts.ip != "0.0.0.0")){
+                host_info host(it_rev_table.second.mac, it_rev_table.second.ip,
+                               it_rev_table.second.switch_port, it_rev_table.second.switch_id);
+                std::string key = "MAC " + it_rev_table.second.mac + " IP " + it_rev_table.second.ip;
                 IPBindTable.insert({key, host});
-                //score s;
-                //s.host = *it_hosts;
-                //src_criterion.insert({it_rev_table->first, s});
                 break;
             }
         }
@@ -507,14 +536,15 @@ void DDoS_Defender::build_ports_set(){
 void DDoS_Defender::print_hosts(){
     LOG(INFO) << "hosts (size = " << hosts.size() <<") :";
     for (auto it : hosts){
-        LOG(INFO) << "IP: " << it.ip << " MAC: " << it.mac;
+        LOG(INFO) << "IP: " << it.ip << " MAC: " << it.mac << " sw: " << it.switch_id << " port " << it.switch_port;
     }
 }
 
 void DDoS_Defender::print_rev_ip_table(){
     LOG(INFO) << "RevIPBindTable (size = " << RevIPBindTable.size() <<") :";
     for (auto it : RevIPBindTable){
-        LOG(INFO) << "IP: " << it.second.ip << " MAC: " << it.second.mac << " " << it.first;
+        LOG(INFO) << "IP: " << it.second.ip << " MAC: " << it.second.mac
+                  << " sw: " << it.second.switch_id << " port: " << it.second.switch_port;
     }
 }
 

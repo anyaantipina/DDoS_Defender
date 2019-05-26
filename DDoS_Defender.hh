@@ -55,6 +55,7 @@ class DDoS_Defender : public Application {
 private:
     bool ATTACK;
     bool BuildDone;
+    bool HostsDone;
     static int THRESHOLD;
     static int crit_good_flows;
     static float alpha;
@@ -104,6 +105,7 @@ public:
     static float threshold_hight;
     static double cpu_util;
     static double threshold_cpu_util;
+    static unsigned int hosts_amount;
 
     void print_ip_table();
     void print_rev_ip_table();
